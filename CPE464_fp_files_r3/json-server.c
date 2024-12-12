@@ -124,70 +124,73 @@ void handle_request(int client_fd) {
     char buffer[BUFFER_SIZE];
     char response[BUFFER_SIZE];
 
-    ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
-    if (bytes_read <= 0) {
-        // perror("Error reading from client");
-        return;
-    }
+    while (1) {
+        // Read the client's request
+        ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
+        if (bytes_read <= 0) {
+            // Client closed the connection or an error occurred
+            break;
+        }
 
-    buffer[bytes_read] = '\0'; // Null-terminate the request
+        buffer[bytes_read] = '\0'; // Null-terminate the request
 
-    // Hardcoded JSON responses
-    const char *implemented_json =
-        "[\n"
-        "  {\"feature\": \"about\", \"URL\": \"/json/about\"},\n"
-        "  {\"feature\": \"quit\", \"URL\": \"/foo/DIE\"}\n"
-        "]";
-    const char *about_json =
-        "{\n"
-        "  \"author\": \"Noah Weitzel\",\n"
-        "  \"email\": \"njweitze@calpoly.edu\",\n"
-        "  \"major\": \"CPE\"\n"
-        "}";
-    const char *quit_json =
-        "{\n"
-        "  \"result\": \"success\"\n"
-        "}";
+        // Hardcoded JSON responses
+        const char *implemented_json =
+            "[\n"
+            "  {\"feature\": \"about\", \"URL\": \"/json/about\"},\n"
+            "  {\"feature\": \"quit\", \"URL\": \"/foo/DIE\"}\n"
+            "]";
+        const char *about_json =
+            "{\n"
+            "  \"author\": \"Noah Weitzel\",\n"
+            "  \"email\": \"njweitze@calpoly.edu\",\n"
+            "  \"major\": \"CPE\"\n"
+            "}";
+        const char *quit_json =
+            "{\n"
+            "  \"result\": \"success\"\n"
+            "}";
 
-    // Determine the requested endpoint
-    if (strncmp(buffer, "GET /json/implemented.json", 26) == 0) {
-        snprintf(response, sizeof(response),
-                 "HTTP/1.1 200 OK\r\n"
-                 "Content-Type: application/json\r\n"
-                 "Content-Length: %ld\r\n"
-                 "\r\n"
-                 "%s",
-                 strlen(implemented_json), implemented_json);
-    } else if (strncmp(buffer, "GET /json/about.json", 20) == 0) {
-        snprintf(response, sizeof(response),
-                 "HTTP/1.1 200 OK\r\n"
-                 "Content-Type: application/json\r\n"
-                 "Content-Length: %ld\r\n"
-                 "\r\n"
-                 "%s",
-                 strlen(about_json), about_json);
-    } else if (strncmp(buffer, "GET /foo/DIE", 12) == 0) {
-        snprintf(response, sizeof(response),
-                 "HTTP/1.1 200 OK\r\n"
-                 "Content-Type: application/json\r\n"
-                 "Content-Length: %ld\r\n"
-                 "\r\n"
-                 "%s",
-                 strlen(quit_json), quit_json);
+        // Determine the requested endpoint
+        if (strncmp(buffer, "GET /json/implemented.json", 26) == 0) {
+            snprintf(response, sizeof(response),
+                     "HTTP/1.1 200 OK\r\n"
+                     "Content-Type: application/json\r\n"
+                     "Content-Length: %ld\r\n"
+                     "\r\n"
+                     "%s",
+                     strlen(implemented_json), implemented_json);
+        } else if (strncmp(buffer, "GET /json/about.json", 20) == 0) {
+            snprintf(response, sizeof(response),
+                     "HTTP/1.1 200 OK\r\n"
+                     "Content-Type: application/json\r\n"
+                     "Content-Length: %ld\r\n"
+                     "\r\n"
+                     "%s",
+                     strlen(about_json), about_json);
+        } else if (strncmp(buffer, "GET /foo/DIE", 12) == 0) {
+            snprintf(response, sizeof(response),
+                     "HTTP/1.1 200 OK\r\n"
+                     "Content-Type: application/json\r\n"
+                     "Content-Length: %ld\r\n"
+                     "\r\n"
+                     "%s",
+                     strlen(quit_json), quit_json);
+            write(client_fd, response, strlen(response));
+            kill(getpid(), SIGINT); // Trigger server shutdown
+            return;
+        } else {
+            snprintf(response, sizeof(response),
+                     "HTTP/1.1 404 Not Found\r\n"
+                     "Content-Type: text/plain\r\n"
+                     "Content-Length: 13\r\n"
+                     "\r\n"
+                     "404 Not Found");
+        }
+
+        // Send the response to the client
         write(client_fd, response, strlen(response));
-        kill(getpid(), SIGINT); // Trigger server shutdown
-        return;
-    } else {
-        snprintf(response, sizeof(response),
-                 "HTTP/1.1 404 Not Found\r\n"
-                 "Content-Type: text/plain\r\n"
-                 "Content-Length: 13\r\n"
-                 "\r\n"
-                 "404 Not Found");
     }
-
-    // Send the response to the client
-    write(client_fd, response, strlen(response));
 }
 
 void graceful_exit(int signum) {
