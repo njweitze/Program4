@@ -30,7 +30,6 @@ int main(int argc, char *argv[]) {
     // Create a TCP socket
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket < 0) {
-        perror("Error creating socket");
         exit(EXIT_FAILURE);
     }
 
@@ -41,7 +40,6 @@ int main(int argc, char *argv[]) {
     // Check if an IP address was provided as a command line parameter
     if (argc > 1) {
         if (inet_pton(AF_INET, argv[1], &server_addr.sin_addr) <= 0) {
-            fprintf(stderr, "Invalid IP address format\n");
             exit(EXIT_FAILURE);
         }
     } else {
@@ -52,14 +50,12 @@ int main(int argc, char *argv[]) {
 
     // Bind the socket to the address
     if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Bind failed");
         close(server_socket);
         exit(EXIT_FAILURE);
     }
 
     // Retrieve and display the dynamically assigned port
     if (getsockname(server_socket, (struct sockaddr *)&server_addr, &addr_len) < 0) {
-        perror("Failed to retrieve socket name");
         close(server_socket);
         exit(EXIT_FAILURE);
     }
@@ -71,7 +67,6 @@ int main(int argc, char *argv[]) {
 
     // Start listening for incoming connections
     if (listen(server_socket, BACKLOG) < 0) {
-        perror("Listen failed");
         close(server_socket);
         exit(EXIT_FAILURE);
     }
@@ -86,7 +81,6 @@ int main(int argc, char *argv[]) {
         // Accept a new client connection
         int client_fd = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
         if (client_fd < 0) {
-            perror("Failed to accept connection");
             continue; // Ignore this connection and keep running
         }
 
@@ -94,14 +88,12 @@ int main(int argc, char *argv[]) {
         pthread_t thread_id;
         int *client_fd_ptr = malloc(sizeof(int));
         if (!client_fd_ptr) {
-            perror("Failed to allocate memory for client socket");
             close(client_fd);
             continue;
         }
 
         *client_fd_ptr = client_fd;
         if (pthread_create(&thread_id, NULL, thread_handler, client_fd_ptr) != 0) {
-            perror("Failed to create thread");
             free(client_fd_ptr);
             close(client_fd);
         }
@@ -138,10 +130,9 @@ void handle_request(int socket_fd) {
             break;
         }
 
-        if (total_bytes_received >= BUFFER_SIZE - 1) {
-            fprintf(stderr, "Request too large to handle\n");
-            return;
-        }
+        // if (total_bytes_received >= BUFFER_SIZE - 1) {
+        //     return;
+        // }
     }
 
     if (total_bytes_received == 0) {
