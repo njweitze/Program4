@@ -1,3 +1,4 @@
+#include "smartalloc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,7 +8,6 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include "json-server.h"
-#include "smartalloc.h"
 
 // Global variable for the server socket
 int server_socket;
