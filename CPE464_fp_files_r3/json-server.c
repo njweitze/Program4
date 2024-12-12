@@ -62,6 +62,7 @@ int main(int argc, char *argv[]) {
     }
 
     printf("HTTP server is using TCP port %d\n", ntohs(server_addr.sin_port));
+    fflush(stdout);
     printf("HTTPS server is using TCP port -1\n");
     fflush(stdout);
 
@@ -73,6 +74,7 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Server is ready to accept connections...\n");
+    fflush(stdout);
 
     while (1) {
         struct sockaddr_in client_addr;
