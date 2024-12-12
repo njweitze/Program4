@@ -18,74 +18,104 @@ void *thread_handler(void *arg);
 void graceful_exit(int signum);
 
 int main(int argc, char *argv[]) {
-    struct sockaddr_in server_addr;
+    struct sockaddr_in6 server_addr, https_addr;
     socklen_t addr_len = sizeof(server_addr);
 
-    // Handle SIGINT to enable clean shutdown
+    // Handle SIGINT for clean shutdown
     signal(SIGINT, graceful_exit);
 
-    // Create a TCP socket
-    server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_socket < 0) {
-        perror("Error creating socket");
+    // Create sockets for HTTP and HTTPS
+    int https_socket;
+    server_socket = socket(AF_INET6, SOCK_STREAM, 0);
+    https_socket = socket(AF_INET6, SOCK_STREAM, 0);
+    if (server_socket < 0 || https_socket < 0) {
+        perror("Error creating sockets");
         exit(EXIT_FAILURE);
     }
 
-    // Configure the server address
+    // Configure the server address for HTTP
     memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
+    server_addr.sin6_family = AF_INET6;
+    server_addr.sin6_port = 0; // Dynamically allocate port
 
-    // Check if an IP address was provided as a command line parameter
     if (argc > 1) {
-        if (inet_pton(AF_INET, argv[1], &server_addr.sin_addr) <= 0) {
-            fprintf(stderr, "Invalid IP address format\n");
-            exit(EXIT_FAILURE);
+        if (strchr(argv[1], ':') != NULL) {
+            // Input contains ':' - treat as IPv6 address
+            if (inet_pton(AF_INET6, argv[1], &server_addr.sin6_addr) <= 0) {
+                fprintf(stderr, "Invalid IPv6 address\n");
+                close(server_socket);
+                close(https_socket);
+                exit(EXIT_FAILURE);
+            }
+        } else {
+            // Assume IPv4-mapped address
+            struct in_addr ipv4_addr;
+            if (inet_pton(AF_INET, argv[1], &ipv4_addr) <= 0) {
+                fprintf(stderr, "Invalid IPv4 address\n");
+                close(server_socket);
+                close(https_socket);
+                exit(EXIT_FAILURE);
+            }
+            server_addr.sin6_addr = in6addr_any; // Assign in6addr_any explicitly
+            memcpy(&server_addr.sin6_addr.s6_addr[12], &ipv4_addr, sizeof(ipv4_addr));
+            server_addr.sin6_addr.s6_addr[10] = 0xff;
+            server_addr.sin6_addr.s6_addr[11] = 0xff;
         }
     } else {
-        server_addr.sin_addr.s_addr = INADDR_ANY; // Bind to all interfaces
+        server_addr.sin6_addr = in6addr_any; // Use "any" IPv6 address
     }
 
-    server_addr.sin_port = 0; // Dynamically allocate port
 
-    // Bind the socket to the address
-    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+
+    // Configure the address for HTTPS (same logic)
+    https_addr = server_addr;
+
+    // Bind the sockets to the addresses
+    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0 ||
+        bind(https_socket, (struct sockaddr *)&https_addr, sizeof(https_addr)) < 0) {
         perror("Bind failed");
         close(server_socket);
+        close(https_socket);
         exit(EXIT_FAILURE);
     }
 
-    // Retrieve and display the dynamically assigned port
-    if (getsockname(server_socket, (struct sockaddr *)&server_addr, &addr_len) < 0) {
-        perror("Failed to retrieve socket name");
+    // Retrieve dynamically assigned ports
+    if (getsockname(server_socket, (struct sockaddr *)&server_addr, &addr_len) < 0 ||
+        getsockname(https_socket, (struct sockaddr *)&https_addr, &addr_len) < 0) {
+        perror("Failed to retrieve socket names");
         close(server_socket);
+        close(https_socket);
         exit(EXIT_FAILURE);
     }
 
-    printf("HTTP server is using TCP port %d\n", ntohs(server_addr.sin_port));
-    printf("HTTPS server is using TCP port -1\n");
+    // Print the assigned ports to stdout
+    printf("HTTP server is using TCP port %d\n", ntohs(server_addr.sin6_port));
+    printf("HTTPS server is using TCP port %d\n", ntohs(https_addr.sin6_port));
     fflush(stdout);
 
     // Start listening for incoming connections
-    if (listen(server_socket, BACKLOG) < 0) {
+    if (listen(server_socket, BACKLOG) < 0 || listen(https_socket, BACKLOG) < 0) {
         perror("Listen failed");
         close(server_socket);
+        close(https_socket);
         exit(EXIT_FAILURE);
     }
 
     printf("Server is ready to accept connections...\n");
 
+    // Main server loop (same logic for accepting connections)
     while (1) {
-        struct sockaddr_in client_addr;
+        struct sockaddr_in6 client_addr;
         socklen_t client_len = sizeof(client_addr);
 
-        // Accept a new client connection
+        // Accept connections on HTTP or HTTPS (example for HTTP)
         int client_fd = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
         if (client_fd < 0) {
             perror("Failed to accept connection");
             continue; // Ignore this connection and keep running
         }
 
-        // Handle the client connection in a new thread
+        // Handle the client connection in a new thread (same logic)
         pthread_t thread_id;
         int *client_fd_ptr = malloc(sizeof(int));
         if (!client_fd_ptr) {
@@ -105,6 +135,9 @@ int main(int argc, char *argv[]) {
         pthread_detach(thread_id);
     }
 
+    // Clean up (never reached in this example)
+    close(server_socket);
+    close(https_socket);
     return 0;
 }
 
@@ -156,7 +189,7 @@ void handle_request(int client_fd) {
                  "\r\n"
                  "%s",
                  strlen(implemented_json), implemented_json);
-    } else if (strncmp(buffer, "GET /json/about.json", 20) == 0) {
+    } else if (strncmp(buffer, "GET /json/about", 15) == 0) {
         snprintf(response, sizeof(response),
                  "HTTP/1.1 200 OK\r\n"
                  "Content-Type: application/json\r\n"
