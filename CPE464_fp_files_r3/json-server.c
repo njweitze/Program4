@@ -120,81 +120,81 @@ void *thread_handler(void *arg) {
     return NULL;
 }
 
-void handle_request(int client_fd) {
-    char buffer[BUFFER_SIZE] = {0};
-    ssize_t bytes_read = 0;
-    int total_read = 0;
-    int max_read_size = BUFFER_SIZE - 1;
+void handle_request(int socket_fd) {
+    char request_buffer[BUFFER_SIZE] = {0};
+    ssize_t bytes_received = 0;
+    int total_bytes_received = 0;
+    int remaining_buffer_size = BUFFER_SIZE - 1;
 
     // Loop to ensure all incoming data is read
     while (1) {
-        bytes_read = recv(client_fd, buffer + total_read, max_read_size - total_read, 0);
-        if (bytes_read <= 0) {
+        bytes_received = recv(socket_fd, request_buffer + total_bytes_received, remaining_buffer_size - total_bytes_received, 0);
+        if (bytes_received <= 0) {
             break; // Exit if the client disconnects or an error occurs
         }
 
-        total_read += bytes_read;
-        buffer[total_read] = '\0'; // Null-terminate after each read
+        total_bytes_received += bytes_received;
+        request_buffer[total_bytes_received] = '\0'; // Null-terminate after each read
 
         // Check if the full HTTP request has been received (look for \r\n\r\n)
-        if (strstr(buffer, "\r\n\r\n") != NULL) {
+        if (strstr(request_buffer, "\r\n\r\n") != NULL) {
             break;
         }
     }
 
-    if (total_read == 0) {
+    if (total_bytes_received == 0) {
         return; // No valid data received
     }
 
     // Hardcoded JSON responses
-    const char *implemented_json =
+    const char *implemented_features_json =
         "[\n"
         "  {\"feature\": \"about\", \"URL\": \"/json/about\"},\n"
         "  {\"feature\": \"quit\", \"URL\": \"/foo/DIE\"}\n"
         "]";
-    const char *about_json =
+    const char *about_info_json =
         "{\n"
         "  \"author\": \"Noah Weitzel\",\n"
         "  \"email\": \"njweitze@calpoly.edu\",\n"
         "  \"major\": \"CPE\"\n"
         "}";
-    const char *quit_json =
+    const char *quit_response_json =
         "{\n"
         "  \"result\": \"success\"\n"
         "}";
 
-    char response[BUFFER_SIZE] = {0};
+    char http_response[BUFFER_SIZE] = {0};
 
     // Determine the requested endpoint
-    if (strncmp(buffer, "GET /json/implemented.json", 26) == 0) {
-        snprintf(response, sizeof(response),
+    if (strncmp(request_buffer, "GET /json/implemented.json", 26) == 0) {
+        snprintf(http_response, sizeof(http_response),
                  "HTTP/1.1 200 OK\r\n"
                  "Content-Type: application/json\r\n"
                  "Content-Length: %ld\r\n"
                  "\r\n"
                  "%s",
-                 strlen(implemented_json), implemented_json);
-    } else if (strncmp(buffer, "GET /json/about.json", 20) == 0) {
-        snprintf(response, sizeof(response),
+                 strlen(implemented_features_json), implemented_features_json);
+    } else if (strncmp(request_buffer, "GET /json/about", 15) == 0) {
+        snprintf(http_response, sizeof(http_response),
                  "HTTP/1.1 200 OK\r\n"
                  "Content-Type: application/json\r\n"
                  "Content-Length: %ld\r\n"
                  "\r\n"
                  "%s",
-                 strlen(about_json), about_json);
-    } else if (strncmp(buffer, "GET /foo/DIE", 12) == 0) {
-        snprintf(response, sizeof(response),
+                 strlen(about_info_json), about_info_json);
+    } else if (strncmp(request_buffer, "GET /foo/DIE", 12) == 0) {
+        snprintf(http_response, sizeof(http_response),
                  "HTTP/1.1 200 OK\r\n"
                  "Content-Type: application/json\r\n"
                  "Content-Length: %ld\r\n"
                  "\r\n"
                  "%s",
-                 strlen(quit_json), quit_json);
-        write(client_fd, response, strlen(response));
+                 strlen(quit_response_json), quit_response_json);
+        write(socket_fd, http_response, strlen(http_response));
         kill(getpid(), SIGINT); // Trigger server shutdown
         return;
     } else {
-        snprintf(response, sizeof(response),
+        snprintf(http_response, sizeof(http_response),
                  "HTTP/1.1 404 Not Found\r\n"
                  "Content-Type: text/plain\r\n"
                  "Content-Length: 13\r\n"
@@ -203,7 +203,7 @@ void handle_request(int client_fd) {
     }
 
     // Send the response to the client
-    write(client_fd, response, strlen(response));
+    write(socket_fd, http_response, strlen(http_response));
 }
 
 
