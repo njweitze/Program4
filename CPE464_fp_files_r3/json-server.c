@@ -129,10 +129,6 @@ void handle_request(int socket_fd) {
         if (strstr(request_buffer, "\r\n\r\n") != NULL) {
             break;
         }
-
-        // if (total_bytes_received >= BUFFER_SIZE - 1) {
-        //     return;
-        // }
     }
 
     if (total_bytes_received == 0) {
