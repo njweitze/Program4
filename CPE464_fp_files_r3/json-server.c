@@ -9,64 +9,75 @@
 #include <pthread.h>
 #include "json-server.h"
 
-#define BUFFER_SIZE 4096
-#define BACKLOG 10 // Define backlog for listen()
-
-// Global variable for the server socket
+// global
 int server_socket;
 
-// Function prototypes
-void handle_request(int client_fd);
-void *thread_handler(void *arg);
-void graceful_exit(int signum);
-
 int main(int argc, char *argv[]) {
-    struct sockaddr_in server_addr;
+    struct sockaddr_in6 server_addr;
+    struct in_addr IP_v4;
     socklen_t addr_len = sizeof(server_addr);
 
-    // Handle SIGINT to enable clean shutdown
-    signal(SIGINT, graceful_exit);
-
-    // Create a TCP socket
-    server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_socket < 0) {
+    // handle SIGINT for clean shutdown
+    if (signal(SIGINT, exit_server) == SIG_ERR) {
+        perror("Failed to set signal handler for SIGINT");
         exit(EXIT_FAILURE);
     }
 
-    // Configure the server address
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
+    // create TCP socket
+    server_socket = socket(AF_INET6, SOCK_STREAM, 0);
+    if (server_socket < 0) {
+        perror("Failed to create socket");
+        exit(EXIT_FAILURE);
+    }
 
-    // Check if an IP address was provided as a command line parameter
+    // configure server address
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin6_family = AF_INET6;
+
+    // check if ip is command-line parameter
     if (argc > 1) {
-        if (inet_pton(AF_INET, argv[1], &server_addr.sin_addr) <= 0) {
-            exit(EXIT_FAILURE);
+        if (inet_pton(AF_INET6, argv[1], &server_addr.sin6_addr) <= 0) {
+            if (inet_pton(AF_INET, argv[1], &IP_v4) <= 0) {
+                perror("Invalid IP address");
+                exit(EXIT_FAILURE);
+            } else {
+                char *msk = "::ffff:";
+                char *converted_IP_v6 = malloc((sizeof(argv[1]) + sizeof(msk) + 1) * sizeof(char));
+                strcpy(converted_IP_v6, msk);
+                strcpy(converted_IP_v6, argv[1]);
+                inet_pton(AF_INET6, converted_IP_v6, &server_addr.sin6_addr);
+                free(converted_IP_v6);
+            }
         }
     } else {
-        server_addr.sin_addr.s_addr = INADDR_ANY; // Bind to all interfaces
+        server_addr.sin6_addr = in6addr_any; // bind to all interfaces
     }
 
-    server_addr.sin_port = 0; // Dynamically allocate port
+    server_addr.sin6_port = 0; // dynamically allocate port
 
-    // Bind the socket to the address
+    // bind socket to the address w/ err check
     if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Failed to bind socket");
         close(server_socket);
         exit(EXIT_FAILURE);
     }
 
-    // Retrieve and display the dynamically assigned port
+    // retrieve dynamically assigned port
     if (getsockname(server_socket, (struct sockaddr *)&server_addr, &addr_len) < 0) {
+        perror("Failed to get socket name");
         close(server_socket);
         exit(EXIT_FAILURE);
     }
 
-    printf("HTTP server is using TCP port %d\n", ntohs(server_addr.sin_port));
+    // print port
+    printf("HTTP server is using TCP port %d\n", ntohs(server_addr.sin6_port));
     fflush(stdout);
     printf("HTTPS server is using TCP port -1\n");
     fflush(stdout);
 
-    // Start listening for incoming connections
+    // listen for connections w/ err check
     if (listen(server_socket, BACKLOG) < 0) {
+        perror("Failed to listen on socket");
         close(server_socket);
         exit(EXIT_FAILURE);
     }
@@ -78,28 +89,33 @@ int main(int argc, char *argv[]) {
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
 
-        // Accept a new client connection
+        // accept client connection w/ err check
         int client_fd = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
         if (client_fd < 0) {
+            perror("Failed to accept client connection");
             continue; // Ignore this connection and keep running
         }
 
-        // Handle the client connection in a new thread
+        // handle client connection in a new thread w/ err check
         pthread_t thread_id;
         int *client_fd_ptr = malloc(sizeof(int));
         if (!client_fd_ptr) {
+            perror("Failed to allocate memory for client FD");
             close(client_fd);
             continue;
         }
 
         *client_fd_ptr = client_fd;
         if (pthread_create(&thread_id, NULL, thread_handler, client_fd_ptr) != 0) {
+            perror("Failed to create thread for client connection");
             free(client_fd_ptr);
             close(client_fd);
         }
 
-        // Detach the thread to avoid memory leaks
-        pthread_detach(thread_id);
+        // detach the thread to avoid memory leaks w/ err check
+        if (pthread_detach(thread_id) != 0) {
+            perror("Failed to detach thread");
+        }
     }
 
     return 0;
@@ -107,11 +123,11 @@ int main(int argc, char *argv[]) {
 
 void *thread_handler(void *arg) {
     int client_fd = *(int *)arg;
-    free(arg); // Free the dynamically allocated memory for the client FD
+    free(arg); // free the memory for the client
 
     handle_request(client_fd);
 
-    close(client_fd); // Close the client connection
+    close(client_fd); // close client connection
     return NULL;
 }
 
@@ -120,22 +136,23 @@ void handle_request(int socket_fd) {
     ssize_t bytes_received = 0;
     int total_bytes_received = 0;
 
-    // Read the incoming request
+    // read incoming request
     while ((bytes_received = recv(socket_fd, request_buffer + total_bytes_received, BUFFER_SIZE - total_bytes_received - 1, 0)) > 0) {
         total_bytes_received += bytes_received;
-        request_buffer[total_bytes_received] = '\0'; // Null-terminate the string
+        request_buffer[total_bytes_received] = '\0'; // null-terminate the string
 
-        // Check if the full HTTP request has been received
+        // check if the full HTTP request has been received
         if (strstr(request_buffer, "\r\n\r\n") != NULL) {
             break;
         }
     }
 
     if (total_bytes_received == 0) {
-        return; // No valid data received
+        perror("Failed to receive valid data from client");
+        return; // no valid data received
     }
 
-    // Hardcoded JSON responses
+    // hardcoded JSON responses
     const char *implemented_features_json =
         "[\n"
         "  {\"feature\": \"about\", \"URL\": \"/json/about\"},\n"
@@ -154,7 +171,7 @@ void handle_request(int socket_fd) {
 
     char http_response[BUFFER_SIZE] = {0};
 
-    // Determine the requested endpoint
+    // determine the requested endpoint
     if (strncmp(request_buffer, "GET /json/implemented.json", 26) == 0) {
         snprintf(http_response, sizeof(http_response),
                  "HTTP/1.1 200 OK\r\n"
@@ -179,8 +196,10 @@ void handle_request(int socket_fd) {
                  "\r\n"
                  "%s",
                  strlen(quit_response_json), quit_response_json);
-        write(socket_fd, http_response, strlen(http_response));
-        kill(getpid(), SIGINT); // Trigger server shutdown
+        if (write(socket_fd, http_response, strlen(http_response)) < 0) {
+            perror("Failed to send quit response");
+        }
+        kill(getpid(), SIGINT); // trigger server shutdown
         return;
     } else {
         snprintf(http_response, sizeof(http_response),
@@ -191,12 +210,17 @@ void handle_request(int socket_fd) {
                  "404 Not Found");
     }
 
-    // Send the response to the client
-    write(socket_fd, http_response, strlen(http_response));
+    // send response to the client
+    if (write(socket_fd, http_response, strlen(http_response)) < 0) {
+        perror("Failed to send HTTP response");
+    }
 }
 
-void graceful_exit(int signum) {
+// exit server
+void exit_server(int signum) {
     printf("\nServer exiting cleanly.\n");
-    close(server_socket); // Close the server socket
+    if (close(server_socket) < 0) {
+        perror("Failed to close server socket");
+    }
     exit(0);
 }

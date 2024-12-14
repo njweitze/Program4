@@ -10,16 +10,16 @@
 #include <netinet/in.h>
 #include <pthread.h>
 
-// Macros
+// macros
 #define BUFFER_SIZE 4096
 #define BACKLOG 10
 
-// Function prototypes
+// functions
 void handle_request(int client_fd);
 void *thread_handler(void *arg);
-void graceful_exit(int signum);
+void exit_server(int signum);
 
-// Global variables
-extern int server_socket; // Used for cleanup in the signal handler
+// global variable
+extern int server_socket; // Used for signal handler
 
-#endif // JSON_SERVER_H
+#endif
