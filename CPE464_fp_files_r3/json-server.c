@@ -35,9 +35,8 @@ int main(int argc, char *argv[]) {
 
     // check if IP provided as a command-line parameter
     if (argc > 1) {
-        // Try to convert the IP address as an IPv6
         if (inet_pton(AF_INET6, argv[1], &server_addr.sin6_addr) <= 0) {
-            // If the IPv6 conversion fails, try IPv4
+            // if IPv6 conversion fails, try IPv4
             struct in_addr IP_v4;
             if (inet_pton(AF_INET, argv[1], &IP_v4) > 0) {
                 char converted_IP_v6[INET6_ADDRSTRLEN] = "::ffff:";
@@ -49,7 +48,7 @@ int main(int argc, char *argv[]) {
             }
         }
     } else {
-        server_addr.sin6_addr = in6addr_any; // Bind to all interfaces
+        server_addr.sin6_addr = in6addr_any; // bind to all interfaces
     }
 
 
