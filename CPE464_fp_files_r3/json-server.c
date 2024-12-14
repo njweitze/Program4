@@ -44,7 +44,7 @@ int main(int argc, char *argv[]) {
                 char *msk = "::ffff:";
                 char *converted_IP_v6 = malloc((sizeof(argv[1]) + sizeof(msk) + 1) * sizeof(char));
                 strcpy(converted_IP_v6, msk);
-                strcpy(converted_IP_v6, argv[1]);
+                strcat(converted_IP_v6, argv[1]);
                 inet_pton(AF_INET6, converted_IP_v6, &server_addr.sin6_addr);
                 free(converted_IP_v6);
             }
