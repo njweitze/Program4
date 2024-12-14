@@ -14,7 +14,6 @@ int server_socket;
 
 int main(int argc, char *argv[]) {
     struct sockaddr_in6 server_addr;
-    struct in_addr IP_v4;
     socklen_t addr_len = sizeof(server_addr);
 
     // handle SIGINT for clean shutdown
@@ -34,24 +33,26 @@ int main(int argc, char *argv[]) {
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin6_family = AF_INET6;
 
-    // check if ip is command-line parameter
+    // check if IP provided as a command-line parameter
     if (argc > 1) {
+        // Try to convert the IP address as an IPv6
         if (inet_pton(AF_INET6, argv[1], &server_addr.sin6_addr) <= 0) {
-            if (inet_pton(AF_INET, argv[1], &IP_v4) <= 0) {
+            // If the IPv6 conversion fails, try IPv4
+            struct in_addr IP_v4;
+            if (inet_pton(AF_INET, argv[1], &IP_v4) > 0) {
+                char converted_IP_v6[INET6_ADDRSTRLEN] = "::ffff:";
+                strncat(converted_IP_v6, argv[1], sizeof(converted_IP_v6) - strlen(converted_IP_v6) - 1);
+                inet_pton(AF_INET6, converted_IP_v6, &server_addr.sin6_addr);
+            } else {
                 perror("Invalid IP address");
                 exit(EXIT_FAILURE);
-            } else {
-                char *msk = "::ffff:";
-                char *converted_IP_v6 = malloc((sizeof(argv[1]) + sizeof(msk) + 1) * sizeof(char));
-                strcpy(converted_IP_v6, msk);
-                strcat(converted_IP_v6, argv[1]);
-                inet_pton(AF_INET6, converted_IP_v6, &server_addr.sin6_addr);
-                free(converted_IP_v6);
             }
         }
     } else {
-        server_addr.sin6_addr = in6addr_any; // bind to all interfaces
+        server_addr.sin6_addr = in6addr_any; // Bind to all interfaces
     }
+
+
 
     server_addr.sin6_port = 0; // dynamically allocate port
 
